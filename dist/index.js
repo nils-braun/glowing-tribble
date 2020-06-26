@@ -923,6 +923,15 @@ function checkMode (stat, options) {
 
 "use strict";
 
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 // import the fs module, which allows us to do filesystem operations
 // fs comes from nodejs, this is impossible with normal javascript
 // running in a browser
@@ -941,7 +950,7 @@ function createMessage(benchmark, comparisonBenchmark) {
     // Table Title
     message += "| Key | Current PR | Default Branch |\n";
     // Table Column Definitions
-    message += "| :--- | :---: | :---: |";
+    message += "| :--- | :---: | :---: |\n";
     for (const key in benchmark) {
         // First Column: The key
         // Please note the ` instead of ". This is TypeScripts
@@ -973,71 +982,73 @@ function createMessage(benchmark, comparisonBenchmark) {
 const core = __webpack_require__(470);
 const github = __webpack_require__(469);
 // Main function of this action: read in the files and produce the comment.
+// The async keyword makes the run function controlled via
+// an event loop - which is beyond the scope of the blog.
+// Just remember: we will use a library which has asynchronous
+// functions, so we also need to call them asynchronously.
 function run() {
-    // The github module has a member called "context",
-    // which always includes information on the action workflow
-    // we are currently running in.
-    // For example, it let's us check the event that triggered the workflow.
-    if (github.context.eventName !== "pull_request") {
-        // The core module on the other hand let's you get
-        // inputs or create outputs or control the action flow
-        // e.g. by producing a fatal error
-        core.setFailed("Can only run on pull requests!");
-        return;
-    }
-    // get the inputs of the action. The "token" input
-    // is not defined so far - we will come to it later.
-    const githubToken = core.getInput("token");
-    const benchmarkFileName = core.getInput("json_file");
-    const oldBenchmarkFileName = core.getInput("comparison_json_file");
-    // Now read in the files with the function defined above
-    const benchmarks = readJSON(benchmarkFileName);
-    let oldBenchmarks = undefined;
-    if (oldBenchmarkFileName) {
-        try {
-            oldBenchmarks = readJSON(oldBenchmarkFileName);
+    return __awaiter(this, void 0, void 0, function* () {
+        // The github module has a member called "context",
+        // which always includes information on the action workflow
+        // we are currently running in.
+        // For example, it let's us check the event that triggered the workflow.
+        if (github.context.eventName !== "pull_request") {
+            // The core module on the other hand let's you get
+            // inputs or create outputs or control the action flow
+            // e.g. by producing a fatal error
+            core.setFailed("Can only run on pull requests!");
+            return;
         }
-        catch (error) {
-            console.log("Can not read comparison file. Continue without it.");
+        // get the inputs of the action. The "token" input
+        // is not defined so far - we will come to it later.
+        const githubToken = core.getInput("token");
+        const benchmarkFileName = core.getInput("json_file");
+        const oldBenchmarkFileName = core.getInput("comparison_json_file");
+        // Now read in the files with the function defined above
+        const benchmarks = readJSON(benchmarkFileName);
+        let oldBenchmarks = undefined;
+        if (oldBenchmarkFileName) {
+            try {
+                oldBenchmarks = readJSON(oldBenchmarkFileName);
+            }
+            catch (error) {
+                console.log("Can not read comparison file. Continue without it.");
+            }
         }
-    }
-    // and create the message
-    const message = createMessage(benchmarks, oldBenchmarks);
-    // output it to the console for logging and debugging
-    console.log(message);
-    // the context does for example also include information
-    // in the pull request or repository we are issued from
-    const context = github.context;
-    const repo = context.repo;
-    const pullRequestNumber = context.payload.pull_request.number;
-    // The GitHub class is a helper, to interact with
-    // the github REST interface.
-    // You can look up the REST interface
-    // here: https://octokit.github.io/rest.js/v18
-    const octokit = new github.GitHub(githubToken);
-    // Get all comments we currently have...
-    const { data: comments } = octokit.issues.listComments(Object.assign(Object.assign({}, repo), { issue_number: pullRequestNumber }));
-    // ... and check if there is already a comment by us
-    const comment = comments.find((comment) => {
-        return (comment.user.login === "github-actions[bot]" &&
-            comment.body.startsWith("## Result of Benchmark Tests\n"));
+        // and create the message
+        const message = createMessage(benchmarks, oldBenchmarks);
+        // output it to the console for logging and debugging
+        console.log(message);
+        // the context does for example also include information
+        // in the pull request or repository we are issued from
+        const context = github.context;
+        const repo = context.repo;
+        const pullRequestNumber = context.payload.pull_request.number;
+        // The Octokit is a helper, to interact with
+        // the github REST interface.
+        // You can look up the REST interface
+        // here: https://octokit.github.io/rest.js/v18
+        const octokit = github.getOctokit(githubToken);
+        // Get all comments we currently have...
+        // (this is an asynchronous function)
+        const { data: comments } = yield octokit.issues.listComments(Object.assign(Object.assign({}, repo), { issue_number: pullRequestNumber }));
+        // ... and check if there is already a comment by us
+        const comment = comments.find((comment) => {
+            return (comment.user.login === "github-actions[bot]" &&
+                comment.body.startsWith("## Result of Benchmark Tests\n"));
+        });
+        // If yes, update that
+        if (comment) {
+            yield octokit.issues.updateComment(Object.assign(Object.assign({}, repo), { comment_id: comment.id, body: message }));
+            // if not, create a new comment
+        }
+        else {
+            yield octokit.issues.createComment(Object.assign(Object.assign({}, repo), { issue_number: pullRequestNumber, body: message }));
+        }
     });
-    // If yes, update that
-    if (comment) {
-        octokit.issues.updateComment(Object.assign(Object.assign({}, repo), { comment_id: comment.id, body: message }));
-        // if not, create a new comment
-    }
-    else {
-        octokit.issues.createComment(Object.assign(Object.assign({}, repo), { issue_number: pullRequestNumber, body: message }));
-    }
 }
 // Our main method: call the run() function and report any errors
-try {
-    run();
-}
-catch (error) {
-    core.setFailed("Workflow failed! " + error.message);
-}
+run().catch(error => core.setFailed("Workflow failed! " + error.message));
 
 
 /***/ }),

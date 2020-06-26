@@ -1,0 +1,22 @@
+{
+  "name": "stuff",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js",
+    "format": "prettier --write **/*.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@actions/core": "^1.2.4",
+    "@actions/github": "^3.0.0"
+  },
+  "devDependencies": {
+    "@zeit/ncc": "^0.22.3",
+    "prettier": "^2.0.5",
+    "typescript": "^3.9.5"
+  }
+}

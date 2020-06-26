@@ -20,7 +20,7 @@ function createMessage(benchmark, comparisonBenchmark): string {
   message += "| Key | Current PR | Default Branch |\n";
 
   // Table Column Definitions
-  message += "| :--- | :---: | :---: |";
+  message += "| :--- | :---: | :---: |\n";
 
   for (const key in benchmark) {
     // First Column: The key
@@ -47,7 +47,6 @@ function createMessage(benchmark, comparisonBenchmark): string {
 
   return message;
 }
-
 // we need two additional imports.
 // These are created by github and are especially built
 // for github actions.
@@ -57,7 +56,11 @@ const core = require("@actions/core");
 const github = require("@actions/github");
 
 // Main function of this action: read in the files and produce the comment.
-function run() {
+// The async keyword makes the run function controlled via
+// an event loop - which is beyond the scope of the blog.
+// Just remember: we will use a library which has asynchronous
+// functions, so we also need to call them asynchronously.
+async function run() {
   // The github module has a member called "context",
   // which always includes information on the action workflow
   // we are currently running in.
@@ -79,7 +82,7 @@ function run() {
   // Now read in the files with the function defined above
   const benchmarks = readJSON(benchmarkFileName);
   let oldBenchmarks = undefined;
-  if (oldBenchmarkFileName) {
+  if(oldBenchmarkFileName) {
     try {
       oldBenchmarks = readJSON(oldBenchmarkFileName);
     } catch (error) {
@@ -97,14 +100,15 @@ function run() {
   const repo = context.repo;
   const pullRequestNumber = context.payload.pull_request.number;
 
-  // The GitHub class is a helper, to interact with
+  // The Octokit is a helper, to interact with
   // the github REST interface.
   // You can look up the REST interface
   // here: https://octokit.github.io/rest.js/v18
-  const octokit = new github.GitHub(githubToken);
+  const octokit = github.getOctokit(githubToken);
 
   // Get all comments we currently have...
-  const { data: comments } = octokit.issues.listComments({
+  // (this is an asynchronous function)
+  const { data: comments } = await octokit.issues.listComments({
     ...repo,
     issue_number: pullRequestNumber,
   });
@@ -119,24 +123,20 @@ function run() {
 
   // If yes, update that
   if (comment) {
-    octokit.issues.updateComment({
+    await octokit.issues.updateComment({
       ...repo,
       comment_id: comment.id,
-      body: message,
+      body: message
     });
-    // if not, create a new comment
+  // if not, create a new comment
   } else {
-    octokit.issues.createComment({
+    await octokit.issues.createComment({
       ...repo,
       issue_number: pullRequestNumber,
-      body: message,
+      body: message
     });
   }
 }
 
 // Our main method: call the run() function and report any errors
-try {
-  run();
-} catch (error) {
-  core.setFailed("Workflow failed! " + error.message);
-}
+run().catch(error => core.setFailed("Workflow failed! " + error.message));
